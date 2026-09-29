@@ -14,7 +14,32 @@ docker run --rm ghcr.io/welworx/sync-gmail \
 
 Gmail requires an [app password](https://myaccount.google.com/apppasswords) (2FA account) or OAuth2 — plain account passwords won't authenticate.
 
+The entrypoint always passes `--gmail1 --gmail2`, imapsync's built-in Gmail
+preset (sets host/SSL, label sync, cross-duplicate skipping, etc. — see
+[FAQ.Gmail.txt](https://imapsync.lamiral.info/FAQ.d/FAQ.Gmail.txt)), so
+there's no need to set `--host1`/`--host2` yourself.
+
 Any extra `imapsync` flag can be appended the same way (`--dry`, `--justfolders`, etc.).
+
+## Gmail bandwidth limits
+
+Gmail throttles IMAP transfer, not imapsync-specific but hit during any
+large sync — see [Gmail bandwidth
+limits](https://knowledge.workspace.google.com/admin/gmail/gmail-bandwidth-limits):
+
+- IMAP download: 2500 MB/day, IMAP upload: 500 MB/day, per account.
+- Exceeding the limit suspends the account for 1-24 hours (sign-in error
+  until it resets).
+- Google recommends throttling instead: `--maxbytespersecond <n>` (the
+  `--gmail1`/`--gmail2` preset already sets `300_000`) and running large
+  migrations in smaller chunks (e.g. `--folder`/`--maxage`) rather than one
+  continuous transfer.
+
+## "All Mail" and labels
+
+Gmail IMAP exposes labels as folders, so `[Gmail]/All Mail` contains every
+message regardless of label — a message with no label (e.g. archived, never
+filed) only shows up there, not in any other folder.
 
 ## Credentials as files
 
