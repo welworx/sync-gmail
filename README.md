@@ -1,112 +1,49 @@
 # sync-gmail
 
-Minimal [imapsync](https://imapsync.lamiral.info/) container, defaulted to Gmail on both ends.
+Minimal [imapsync](https://imapsync.lamiral.info/) container, defaulted to
+Gmail on both ends (`--gmail1 --gmail2` baked into the entrypoint — no need
+to set `--host1`/`--host2` yourself).
 
-Published as `ghcr.io/welworx/sync-gmail:latest`. New GHCR packages are
-private by default — after the first push, set the package visibility to
-public in its GitHub package settings, or `docker login ghcr.io` first.
+Published as `ghcr.io/welworx/sync-gmail:latest` (amd64 + arm64). GHCR
+packages are private on first push — set it public in the package's GitHub
+settings, or `docker login ghcr.io` first.
 
 ## Usage
 
-```bash
-docker run --rm ghcr.io/welworx/sync-gmail \
-  --user1 source@gmail.com --password1 'app-password' \
-  --user2 dest@gmail.com   --password2 'app-password'
-```
-
-Gmail requires an [app password](https://myaccount.google.com/apppasswords) (2FA account) or OAuth2 — plain account passwords won't authenticate.
-
-The entrypoint always passes `--gmail1 --gmail2`, imapsync's built-in Gmail
-preset (sets host/SSL, label sync, cross-duplicate skipping, etc. — see
-[FAQ.Gmail.txt](https://imapsync.lamiral.info/FAQ.d/FAQ.Gmail.txt)), so
-there's no need to set `--host1`/`--host2` yourself.
-
-Any extra `imapsync` flag can be appended the same way (`--dry`, `--justfolders`, etc.) — the entrypoint is exec-form, `docker run` args are simply appended to it.
-
-## Gmail bandwidth limits
-
-Gmail throttles IMAP transfer, not imapsync-specific but hit during any
-large sync — see [Gmail bandwidth
-limits](https://knowledge.workspace.google.com/admin/gmail/gmail-bandwidth-limits):
-
-- IMAP download: 2500 MB/day, IMAP upload: 500 MB/day, per account.
-- Exceeding the limit suspends the account for 1-24 hours (sign-in error
-  until it resets).
-- Google recommends throttling instead: `--maxbytespersecond <n>` (the
-  `--gmail1`/`--gmail2` preset already sets `300_000` — imapsync's own source
-  notes this is higher than Gmail's documented limit actually computes to,
-  which works in practice but pass a lower value yourself if you hit
-  throttling) and running large migrations in smaller chunks (e.g.
-  `--folder`/`--maxage`) rather than one continuous transfer.
-
-## "All Mail" and labels
-
-Gmail IMAP exposes labels as folders, so `[Gmail]/All Mail` contains every
-message regardless of label — a message with no label (e.g. archived, never
-filed) only shows up there, not in any other folder.
-
-## Credentials as files
-
-`--password1`/`--password2` end up in `docker inspect`, `ps`, and shell
-history. `--passfile1 <path>`/`--passfile2 <path>` read the password from
-the first line of a file instead:
-
-```bash
-docker run --rm \
-  -v /path/to/password1.txt:/run/secrets/password1:ro \
-  -v /path/to/password2.txt:/run/secrets/password2:ro \
-  ghcr.io/welworx/sync-gmail \
-  --user1 source@gmail.com --passfile1 /run/secrets/password1 \
-  --user2 dest@gmail.com   --passfile2 /run/secrets/password2
-```
-
-imapsync also reads `IMAPSYNC_PASSWORD1`/`IMAPSYNC_PASSWORD2` natively when
-`--password1`/`--passfile1` (or `--password2`/`--passfile2`) aren't given —
-but `-e` env vars end up in `docker inspect`/`/proc/1/environ` too, no more
-private than `--password1`. `--passfile1`/`--passfile2` above is the actual
-safe option; the env vars are only worth it if you're already passing the
-value through some other secret-injection mechanism (e.g. an orchestrator
-that only supports env, not files):
-
-```bash
-docker run --rm \
-  -e IMAPSYNC_PASSWORD1='app-password' \
-  -e IMAPSYNC_PASSWORD2='app-password' \
-  ghcr.io/welworx/sync-gmail \
-  --user1 source@gmail.com --user2 dest@gmail.com
-```
-
-## Logs
-
-imapsync disables file logging by default when it detects a Docker context
-(stdout only) — the image ships a `/Dockerfile` marker file so imapsync's own
-autodetection actually triggers this, the same trick its upstream image
-uses. Pass `--log --logdir /logs` with a mounted volume to keep a
-persistent log file per run (`--logdir` replaces the default log directory
-rather than nesting under it, so the file lands at
-`/logs/<timestamp>_user1_user2.txt`):
-
-```bash
-docker run --rm -v sync-gmail-logs:/logs ghcr.io/welworx/sync-gmail \
-  --user1 source@gmail.com --password1 'app-password' \
-  --user2 dest@gmail.com   --password2 'app-password' \
-  --log --logdir /logs
-```
-
-## Reusable cache across runs
-
-`--usecache` makes imapsync remember which message UIDs it already synced
-(one empty marker file per message under `<tmpdir>/imapsync_cache/`), so
-re-runs skip already-copied messages instead of re-checking them on both
-servers. Without a persistent `--tmpdir`, that cache lives in the
-container's own filesystem and is lost when the container exits.
-
-Mount a volume at `/cache` (declared in the image) and point `--tmpdir` at
-it to keep the cache between runs:
+Full example, German→English Gmail sync, with the flags worth using by default:
 
 ```bash
 docker run --rm -v sync-gmail-cache:/cache ghcr.io/welworx/sync-gmail \
-  --user1 source@gmail.com --password1 'app-password' \
-  --user2 dest@gmail.com   --password2 'app-password' \
-  --tmpdir /cache --usecache
+  --user1 source@gmail.com --password1 'app-password-1' \
+  --user2 dest@gmail.com   --password2 'app-password-2' \
+  --useuid --usecache --tmpdir /cache --maxsleep 30 \
+  --folderlast "[Gmail]/Gesendet" --folderlast "[Gmail]/Papierkorb" \
+  --folderlast "[Gmail]/Wichtig" --folderlast "[Gmail]/Markiert" \
+  --folderlast "[Gmail]/Entwürfe" --folderlast "[Gmail]/Spam" \
+  --folderlast "[Gmail]/Alle Nachrichten" \
+  --f1f2 "[Gmail]/Markiert=[Gmail]/Starred"
 ```
+
+- Gmail requires an [app password](https://myaccount.google.com/apppasswords) (2FA) or OAuth2 — a plain account password won't authenticate.
+- `-v sync-gmail-cache:/cache` + `--tmpdir /cache --usecache`: persists imapsync's UID cache across runs, so re-runs skip already-synced messages instead of re-checking every message on both servers.
+- `--useuid --maxsleep 30`: UID-based dedup (more reliable than the header-based default) and a higher sleep ceiling (default is 2s) so the Gmail preset's bandwidth throttling can actually back off.
+- `--folderlast`/`--f1f2`: fixes German folder names the image's Gmail preset doesn't recognize — see [Known limitations](#known-limitations). Swap the German strings to whichever side (`host1`/`host2`) is actually the German-locale account; drop both flags entirely if neither account is German-locale.
+
+Any other `imapsync` flag can be appended the same way — the entrypoint is exec-form, `docker run` args are simply appended to it.
+
+## Known limitations
+
+- **Gmail bandwidth limits**: 2500MB/day IMAP download, 500MB/day upload, per account — exceeding it suspends the account for 1-24h. See [Google's docs](https://knowledge.workspace.google.com/admin/gmail/gmail-bandwidth-limits). The Gmail preset already sets `--maxbytespersecond 300_000`; lower it further if you still hit the limit.
+- **"All Mail" contains everything**: Gmail exposes labels as IMAP folders; a message with no label only shows up in `[Gmail]/All Mail`.
+- **Non-English folder names**: the baked-in Gmail preset's folder-ordering list is hardcoded English, and imapsync's folder auto-mapping has built-in strings for German Sent/Trash/Drafts but not Starred/Archive — use `--folderlast`/`--f1f2` as shown above for other locales/folders.
+- **`--skipcrossduplicates` is deliberately not used above**: per imapsync's own docs it's meant for Gmail→non-Gmail migrations and defaults off for Gmail→Gmail (label sync needs to visit each label-folder). Only add it if the destination isn't Gmail.
+- **Vulnerability scanning is amd64-only**: the CI build is multi-arch, but the scan step can't load a multi-platform image locally; arm64 uses identical package versions.
+
+## More settings
+
+Everything else — persistent logs (`--log --logdir <dir>` + a mounted
+volume, off by default under Docker), credentials from a file or env var
+instead of `--password1`/`--password2` (`--passfile1`/`--passfile2`,
+`IMAPSYNC_PASSWORD1`/`IMAPSYNC_PASSWORD2`), and the full flag reference —
+see the [imapsync manual](https://imapsync.lamiral.info/README.txt) and
+[Gmail FAQ](https://imapsync.lamiral.info/FAQ.d/FAQ.Gmail.txt).
