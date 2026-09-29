@@ -2,7 +2,9 @@
 
 Minimal [imapsync](https://imapsync.lamiral.info/) container, defaulted to Gmail on both ends.
 
-Published as `ghcr.io/welworx/sync-gmail:latest`.
+Published as `ghcr.io/welworx/sync-gmail:latest`. New GHCR packages are
+private by default — after the first push, set the package visibility to
+public in its GitHub package settings, or `docker login ghcr.io` first.
 
 ## Usage
 
@@ -31,9 +33,11 @@ limits](https://knowledge.workspace.google.com/admin/gmail/gmail-bandwidth-limit
 - Exceeding the limit suspends the account for 1-24 hours (sign-in error
   until it resets).
 - Google recommends throttling instead: `--maxbytespersecond <n>` (the
-  `--gmail1`/`--gmail2` preset already sets `300_000`) and running large
-  migrations in smaller chunks (e.g. `--folder`/`--maxage`) rather than one
-  continuous transfer.
+  `--gmail1`/`--gmail2` preset already sets `300_000` — imapsync's own source
+  notes this is higher than Gmail's documented limit actually computes to,
+  which works in practice but pass a lower value yourself if you hit
+  throttling) and running large migrations in smaller chunks (e.g.
+  `--folder`/`--maxage`) rather than one continuous transfer.
 
 ## "All Mail" and labels
 
@@ -56,9 +60,13 @@ docker run --rm \
   --user2 dest@gmail.com   --passfile2 /run/secrets/password2
 ```
 
-Or set them via env instead — imapsync reads `IMAPSYNC_PASSWORD1`/
-`IMAPSYNC_PASSWORD2` natively when `--password1`/`--passfile1` (or
-`--password2`/`--passfile2`) aren't given:
+imapsync also reads `IMAPSYNC_PASSWORD1`/`IMAPSYNC_PASSWORD2` natively when
+`--password1`/`--passfile1` (or `--password2`/`--passfile2`) aren't given —
+but `-e` env vars end up in `docker inspect`/`/proc/1/environ` too, no more
+private than `--password1`. `--passfile1`/`--passfile2` above is the actual
+safe option; the env vars are only worth it if you're already passing the
+value through some other secret-injection mechanism (e.g. an orchestrator
+that only supports env, not files):
 
 ```bash
 docker run --rm \
@@ -71,8 +79,12 @@ docker run --rm \
 ## Logs
 
 imapsync disables file logging by default when it detects a Docker context
-(stdout only). Pass `--log --logdir /logs` with a mounted volume to keep a
-persistent log file per run (`/logs/LOG_imapsync/<timestamp>_user1_user2.txt`):
+(stdout only) — the image ships a `/Dockerfile` marker file so imapsync's own
+autodetection actually triggers this, the same trick its upstream image
+uses. Pass `--log --logdir /logs` with a mounted volume to keep a
+persistent log file per run (`--logdir` replaces the default log directory
+rather than nesting under it, so the file lands at
+`/logs/<timestamp>_user1_user2.txt`):
 
 ```bash
 docker run --rm -v sync-gmail-logs:/logs ghcr.io/welworx/sync-gmail \
