@@ -19,7 +19,7 @@ preset (sets host/SSL, label sync, cross-duplicate skipping, etc. — see
 [FAQ.Gmail.txt](https://imapsync.lamiral.info/FAQ.d/FAQ.Gmail.txt)), so
 there's no need to set `--host1`/`--host2` yourself.
 
-Any extra `imapsync` flag can be appended the same way (`--dry`, `--justfolders`, etc.).
+Any extra `imapsync` flag can be appended the same way (`--dry`, `--justfolders`, etc.) — the entrypoint is exec-form, `docker run` args are simply appended to it.
 
 ## Gmail bandwidth limits
 
@@ -54,6 +54,18 @@ docker run --rm \
   ghcr.io/welworx/sync-gmail \
   --user1 source@gmail.com --passfile1 /run/secrets/password1 \
   --user2 dest@gmail.com   --passfile2 /run/secrets/password2
+```
+
+Or set them via env instead — imapsync reads `IMAPSYNC_PASSWORD1`/
+`IMAPSYNC_PASSWORD2` natively when `--password1`/`--passfile1` (or
+`--password2`/`--passfile2`) aren't given:
+
+```bash
+docker run --rm \
+  -e IMAPSYNC_PASSWORD1='app-password' \
+  -e IMAPSYNC_PASSWORD2='app-password' \
+  ghcr.io/welworx/sync-gmail \
+  --user1 source@gmail.com --user2 dest@gmail.com
 ```
 
 ## Logs
