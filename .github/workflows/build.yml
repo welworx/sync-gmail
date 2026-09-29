@@ -27,6 +27,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: docker/setup-qemu-action@v4
+
       - uses: docker/setup-buildx-action@v4
 
       - uses: docker/login-action@v4
@@ -72,12 +74,19 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
 
-      # Reuses the buildx cache from the build step above, so this doesn't
-      # rebuild anything — it just pushes what was already scanned.
+      # Reuses the buildx cache from the build step above for the amd64
+      # layers, so this doesn't rebuild those — it just adds an arm64 build
+      # (via QEMU) and pushes both.
+      # ponytail: only the amd64 build above gets scanned (buildx --load
+      # can't load a multi-platform image locally); arm64 uses the same
+      # apk package versions so CVE exposure should match. If that ever
+      # needs verifying directly, scan with `trivy image --platform
+      # linux/arm64 <ref>` against the pushed image.
       - uses: docker/build-push-action@v7
         if: github.event_name != 'pull_request'
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
