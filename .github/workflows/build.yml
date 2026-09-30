@@ -49,11 +49,21 @@ jobs:
       # Build and load locally first so the vulnerability scan runs before
       # anything is published — a CRITICAL/HIGH finding fails the job here,
       # before the push step below.
+      #
+      # no-cache on the weekly schedule run: the layer cache would otherwise
+      # let `apk add imapsync` (and the base image's own packages) skip
+      # re-running forever, since the Dockerfile/digest never change on
+      # their own — defeating the whole point of a scheduled rebuild. A
+      # fresh apk fetch is the only way this image picks up an imapsync
+      # (or Alpine security patch) update without a Dependabot-triggered
+      # Dockerfile change. cache-to still runs, so push/PR builds keep
+      # using the fast path.
       - uses: docker/build-push-action@v7
         with:
           context: .
           push: false
           load: true
+          no-cache: ${{ github.event_name == 'schedule' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -88,6 +98,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          no-cache: ${{ github.event_name == 'schedule' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
