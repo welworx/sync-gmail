@@ -1,8 +1,9 @@
 # sync-gmail
 
-Minimal [imapsync](https://imapsync.lamiral.info/) container, defaulted to
-Gmail on both ends (`--gmail1 --gmail2` baked into the entrypoint — no need
-to set `--host1`/`--host2` yourself).
+Containerized tool that helps sync two inboxes (e.g. Gmail) via IMAP, using
+[imapsync](https://imapsync.lamiral.info/). Defaults to Gmail on both ends
+(`--gmail1 --gmail2` baked into the entrypoint — no need to set
+`--host1`/`--host2` yourself).
 
 Published as `ghcr.io/welworx/sync-gmail:latest` (amd64 + arm64). GHCR
 packages are private on first push — set it public in the package's GitHub
@@ -22,7 +23,8 @@ docker run --rm -v sync-gmail-cache:/cache -v sync-gmail-logs:/logs ghcr.io/welw
   --folderlast "[Gmail]/Wichtig" --folderlast "[Gmail]/Markiert" \
   --folderlast "[Gmail]/Entwürfe" --folderlast "[Gmail]/Spam" \
   --folderlast "[Gmail]/Alle Nachrichten" \
-  --f1f2 "[Gmail]/Markiert=[Gmail]/Starred"
+  --f1f2 "[Gmail]/Markiert=[Gmail]/Starred" \
+  --f1f2 "[Gmail]/Wichtig=[Gmail]/Important"
 ```
 
 - Gmail requires an [app password](https://myaccount.google.com/apppasswords) (2FA) or OAuth2 — a plain account password won't authenticate.
@@ -38,7 +40,7 @@ Any other `imapsync` flag can be appended the same way — the entrypoint is exe
 
 - **Gmail bandwidth limits**: 2500MB/day IMAP download, 500MB/day upload, per account — exceeding it suspends the account for 1-24h. See [Google's docs](https://knowledge.workspace.google.com/admin/gmail/gmail-bandwidth-limits). The Gmail preset already sets `--maxbytespersecond 300_000`; lower it further if you still hit the limit.
 - **"All Mail" contains everything**: Gmail exposes labels as IMAP folders; a message with no label only shows up in `[Gmail]/All Mail`.
-- **Non-English folder names**: the baked-in Gmail preset's folder-ordering list is hardcoded English, and imapsync's folder auto-mapping has built-in strings for German Sent/Trash/Drafts but not Starred/Archive — use `--folderlast`/`--f1f2` as shown above for other locales/folders.
+- **Non-English folder names**: the baked-in Gmail preset's folder-ordering list is hardcoded English, and imapsync's folder auto-mapping only covers RFC 6154's categories (Sent/Trash/Drafts/Junk/Flagged/Archive/All) — with built-in strings for German Sent/Trash/Drafts, but not Starred. **Important isn't RFC 6154 at all** — it's Gmail-only, so automap never handles it, in any language. Both need an explicit `--f1f2` (shown above); a same-named folder on both sides (e.g. English↔English) doesn't need mapping at all, since it already matches by name.
 - **`--skipcrossduplicates` is deliberately not used above**: per imapsync's own docs it's meant for Gmail→non-Gmail migrations and defaults off for Gmail→Gmail (label sync needs to visit each label-folder). Only add it if the destination isn't Gmail.
 - **Vulnerability scanning is amd64-only**: the CI build is multi-arch, but the scan step can't load a multi-platform image locally; arm64 uses identical package versions.
 - **Dependabot doesn't track the imapsync version**: it's installed via `apk add imapsync`, resolved from Alpine's own community repo at build time — Dependabot's `docker` ecosystem only watches the `FROM alpine:...` base image tag/digest, not packages installed inside `RUN`. The weekly scheduled CI build rebuilds with `no-cache` specifically so `apk add` actually re-fetches instead of reusing a cached layer (a cached rebuild would otherwise never pick up a newer imapsync even though the schedule fires), but there's still no active check — watch for imapsync's own self-reported staleness message on every run (`"This imapsync is not up to date..."`, unless `--noreleasecheck` is passed).

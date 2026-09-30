@@ -38,6 +38,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Reads the imapsync version straight from the Alpine branch pinned in
+      # the Dockerfile's FROM line, so this can't drift if that branch is
+      # ever bumped. Same version `apk add imapsync` resolves to moments
+      # later in the actual build.
+      - name: Read imapsync version
+        id: imapsync
+        run: |
+          branch=$(grep -oP '(?<=^FROM alpine:)[0-9]+\.[0-9]+' Dockerfile)
+          version=$(curl -sL "https://dl-cdn.alpinelinux.org/alpine/v${branch}/community/x86_64/APKINDEX.tar.gz" \
+            | tar -xzO APKINDEX 2>/dev/null \
+            | awk '/^P:imapsync$/{f=1;next} f&&/^V:/{print substr($0,3);exit} /^$/{f=0}')
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
       - uses: docker/metadata-action@v6
         id: meta
         with:
@@ -45,6 +58,7 @@ jobs:
           tags: |
             type=raw,value=latest
             type=raw,value={{sha}}
+            type=raw,value=${{ steps.imapsync.outputs.version }}
 
       # Build and load locally first so the vulnerability scan runs before
       # anything is published — a CRITICAL/HIGH finding fails the job here,
